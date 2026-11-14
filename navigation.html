@@ -1,0 +1,646 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brave Step | Indoor Navigation</title>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: #090611;
+    color: white;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.container {
+    width: 100%;
+    max-width: 520px;
+    background: #171124;
+    border: 1px solid #493267;
+    border-radius: 22px;
+    padding: 30px;
+    text-align: center;
+}
+
+.logo {
+    color: #c084fc;
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 12px;
+}
+
+.subtitle {
+    color: #b7a9c9;
+    margin-bottom: 28px;
+}
+
+.location-card {
+    background: #251a36;
+    padding: 24px;
+    border-radius: 16px;
+    margin-bottom: 20px;
+}
+
+.location-card h2 {
+    color: #c084fc;
+    font-size: 15px;
+    margin-bottom: 12px;
+}
+
+.location {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.floor {
+    color: #b7a9c9;
+    margin-top: 9px;
+}
+
+button {
+    width: 100%;
+    padding: 15px;
+    margin-top: 12px;
+    border: none;
+    border-radius: 12px;
+    background: #a855f7;
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #9333ea;
+}
+
+.status {
+    margin-top: 20px;
+    color: #c4b5fd;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.footer {
+    margin-top: 25px;
+    color: #8c7c9f;
+    font-size: 12px;
+}
+/* BRAVE STEP QR SCANNER */
+
+#qr-scanner-section {
+    max-width: 650px;
+    margin: 40px auto;
+    padding: 28px;
+    background: #100b1c;
+    border: 1px solid #7545a8;
+    border-radius: 22px;
+    color: white;
+    text-align: center;
+    box-shadow: 0 10px 35px rgba(0,0,0,0.35);
+}
+
+#qr-scanner-section h2 {
+    color: #c084fc;
+    font-size: 26px;
+    margin-bottom: 12px;
+}
+
+#qr-scanner-section p {
+    color: #d1c4e9;
+}
+
+#reader {
+    width: 100%;
+    max-width: 420px;
+    margin: 25px auto;
+    overflow: hidden;
+    border-radius: 15px;
+}
+
+#reader video {
+    border-radius: 12px;
+}
+
+#scan-status {
+    color: #c084fc;
+    font-size: 18px;
+}
+
+#qr-result {
+    color: #ffffff;
+    font-weight: bold;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="logo">BRAVE STEP</div>
+
+    <p class="subtitle">
+        Smart Indoor Voice Navigation System
+    </p>
+
+    <div class="location-card">
+
+        <h2>CURRENT CHECKPOINT</h2>
+
+        <div class="location" id="location">
+            Detecting...
+        </div>
+
+        <div class="floor" id="floor"></div>
+
+    </div>
+
+    <button onclick="announceLocation()">
+        🔊 Announce My Location
+    </button>
+
+    <button onclick="stopVoice()">
+        Stop Voice
+    </button>
+
+<div class="location-card">
+    <h2>SELECT YOUR DESTINATION</h2>
+
+    <select id="destination"
+        style="width:100%; padding:14px; border-radius:10px;
+        font-size:16px; margin-top:12px;">
+
+        <option value="">Choose destination</option>
+        <option value="QR02">Reception</option>
+        <option value="QR03">Waiting Hall</option>
+        <option value="QR04">Pharmacy</option>
+        <option value="QR05">Staircase</option>
+        <option value="QR06">ICU</option>
+        <option value="QR07">Laboratory</option>
+        <option value="QR08">Exit Corridor</option>
+    </select>
+
+    <button onclick="startNavigation()">
+        Start Navigation
+    </button>
+
+    <button onclick="announceNext()">
+        Announce Next Checkpoint
+    </button>
+</div>
+
+    <div class="status" id="status" aria-live="polite">
+        Identifying your checkpoint...
+    </div>
+
+    <div class="footer">
+        Brave Step Accessibility Technology
+    </div>
+
+</div>
+
+<script>
+
+const checkpoints = {
+
+    QR01: {
+        name: "Main Entrance",
+        floor: "Ground Floor"
+    },
+
+    QR02: {
+        name: "Reception",
+        floor: "Ground Floor"
+    },
+
+    QR03: {
+        name: "Waiting Hall",
+        floor: "Ground Floor"
+    },
+
+    QR04: {
+        name: "Pharmacy",
+        floor: "Ground Floor"
+    },
+
+    QR05: {
+        name: "Staircase",
+        floor: "First Floor"
+    },
+
+    QR06: {
+        name: "ICU",
+        floor: "First Floor"
+    },
+
+    QR07: {
+        name: "Laboratory",
+        floor: "First Floor"
+    },
+
+    QR08: {
+        name: "Exit Corridor",
+        floor: "First Floor"
+    }
+
+};
+
+// Read checkpoint from URL
+const params = new URLSearchParams(
+    window.location.search
+);
+
+let currentCheckpointId = (
+    params.get("checkpoint") || "QR01"
+).toUpperCase();
+
+let current = checkpoints[currentCheckpointId];
+
+const locationElement =
+    document.getElementById("location");
+
+const floorElement =
+    document.getElementById("floor");
+
+const statusElement =
+    document.getElementById("status");
+
+if (current) {
+
+    locationElement.textContent = current.name;
+
+    floorElement.textContent = current.floor;
+
+    statusElement.textContent =
+        "Checkpoint identified successfully.";
+
+} else {
+
+    locationElement.textContent =
+        "Unknown Checkpoint";
+
+    floorElement.textContent = "";
+
+    statusElement.textContent =
+        "Please scan a valid Brave Step checkpoint.";
+
+}
+
+function announceLocation() {
+
+    if (!current) {
+        statusElement.textContent =
+            "Invalid checkpoint. Please scan again.";
+        return;
+    }
+
+    if (!("speechSynthesis" in window)) {
+        statusElement.textContent =
+            "Voice assistance is not supported in this browser.";
+        return;
+    }
+
+    speechSynthesis.cancel();
+
+    const message = new SpeechSynthesisUtterance(
+        "Welcome to Brave Step. " +
+        "You are currently at " +
+        current.name +
+        ", " +
+        current.floor +
+        ". Please select your destination when navigation becomes available."
+    );
+
+    message.lang = "en-IN";
+    message.rate = 0.9;
+    message.pitch = 1;
+
+    speechSynthesis.speak(message);
+
+    statusElement.textContent =
+        "Voice assistance is active.";
+
+}
+
+function stopVoice() {
+
+    if ("speechSynthesis" in window) {
+        speechSynthesis.cancel();
+    }
+
+    statusElement.textContent =
+        "Voice assistance stopped.";
+
+}
+
+const routes = {
+    QR02: ["QR02"],
+    QR03: ["QR02", "QR03"],
+    QR04: ["QR02", "QR03", "QR04"],
+    QR05: ["QR02", "QR03", "QR05"],
+    QR06: ["QR02", "QR03", "QR05", "QR06"],
+    QR07: ["QR02", "QR03", "QR05", "QR07"],
+    QR08: ["QR02", "QR03", "QR05", "QR08"]
+};
+
+let activeRoute = [];
+let routeIndex = 0;
+
+
+function startNavigation() {
+
+    const destination =
+        document.getElementById("destination").value;
+
+    if (!destination) {
+        statusElement.textContent =
+            "Please select your destination.";
+        return;
+    }
+
+    if (!routes[destination]) {
+        statusElement.textContent =
+            "Route not available.";
+        return;
+    }
+
+    if (!("speechSynthesis" in window)) {
+        statusElement.textContent =
+            "Voice is not supported in this browser.";
+        return;
+    }
+
+    const fullRoute = routes[destination];
+
+    const currentIndex =
+        currentCheckpointId === "QR01"
+            ? -1
+            : fullRoute.indexOf(currentCheckpointId);
+
+    if (currentIndex === -1 &&
+        currentCheckpointId !== "QR01") {
+
+        statusElement.textContent =
+            "Your current checkpoint is not on this route.";
+        return;
+    }
+
+    activeRoute = fullRoute.slice(currentIndex + 1);
+    routeIndex = 0;
+
+    if (activeRoute.length === 0) {
+        statusElement.textContent =
+            "You have already reached your destination.";
+
+        speakMessage("You have reached your destination.");
+        return;
+    }
+
+    announceFullRoute();
+}
+
+function speakMessage(message) {
+
+    speechSynthesis.cancel();
+
+    const voice = new SpeechSynthesisUtterance(message);
+    voice.lang = "en-IN";
+    voice.rate = 0.9;
+
+    speechSynthesis.speak(voice);
+}
+
+function announceFullRoute() {
+
+    const destination =
+        document.getElementById("destination").value;
+
+    const destinationName = checkpoints[destination].name;
+
+    const routeNames = activeRoute.map(
+        id => checkpoints[id].name
+    );
+
+    const message =
+        "Your destination is " + destinationName +
+        ". Your route is: " +
+        routeNames.join(", then ") +
+        ". Please scan each checkpoint to continue.";
+
+    statusElement.textContent = message;
+
+    speechSynthesis.cancel();
+
+    const voice = new SpeechSynthesisUtterance(message);
+    voice.lang = "en-IN";
+    voice.rate = 0.9;
+    voice.pitch = 1;
+
+    speechSynthesis.speak(voice);
+}
+
+function announceNext() {
+
+    if (activeRoute.length === 0) {
+        statusElement.textContent =
+            "Please select a destination first.";
+        return;
+    }
+
+    if (routeIndex >= activeRoute.length) {
+        statusElement.textContent =
+            "Route completed.";
+        return;
+    }
+
+    const nextId = activeRoute[routeIndex];
+    const next = checkpoints[nextId];
+
+    const message =
+        "Your next checkpoint is " +
+        next.name +
+        ", " + next.floor +
+        ". Please follow the verified route and scan the next QR code.";
+
+    statusElement.textContent = message;
+
+    speechSynthesis.cancel();
+
+    const voice = new SpeechSynthesisUtterance(message);
+    voice.lang = "en-IN";
+    voice.rate = 0.9;
+
+    speechSynthesis.speak(voice);
+}
+
+</script>
+<!-- BRAVE STEP QR SCANNER -->
+
+<section id="qr-scanner-section">
+    <h2>Brave Step QR Scanner</h2>
+
+    <p>Scan the QR code at your current checkpoint.</p>
+
+    <div id="reader"></div>
+
+    <h3 id="scan-status">
+        Waiting for QR scan...
+    </h3>
+
+    <p id="qr-result"></p>
+</section>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<script>
+    let lastScanned = "";
+
+ 
+function onScanSuccess(decodedText) {
+
+    alert("QR SCANNED: " + decodedText);
+
+    if (decodedText === lastScanned) return;
+
+   
+let scannedId = "";
+
+try {
+    const scannedURL = new URL(decodedText);
+
+    scannedId = scannedURL.searchParams.get("checkpoint") || "";
+
+    // Support Brave Step custom QR format
+    if (!scannedId) {
+        scannedId = scannedURL.pathname
+            .split("/")
+            .filter(Boolean)
+            .pop() || "";
+    }
+
+} catch (error) {
+    scannedId = decodedText;
+}
+
+scannedId = scannedId.toUpperCase().trim();
+
+
+    scannedId = scannedId.toUpperCase().trim();
+
+    console.log("SCANNED QR VALUE:", JSON.stringify(scannedId));
+
+    const checkpoint = checkpoints[scannedId];
+
+    // Validate QR code first
+    if (!checkpoint) {
+
+        document.getElementById("scan-status").innerText =
+            "Invalid QR Code";
+
+        document.getElementById("qr-result").innerText =
+            "Please scan a valid Brave Step checkpoint.";
+
+        return;
+    }
+
+    lastScanned = decodedText;
+
+    // Update current checkpoint
+    currentCheckpointId = scannedId;
+    current = checkpoint;
+
+    locationElement.textContent = checkpoint.name;
+    floorElement.textContent = checkpoint.floor;
+
+    document.getElementById("scan-status").innerText =
+        "Checkpoint Identified!";
+
+    document.getElementById("qr-result").innerText =
+        checkpoint.name + " - " + checkpoint.floor;
+
+    // Navigation voice logic
+    if (activeRoute.length > 0) {
+
+        // Confirm starting point
+        if (
+            scannedId === "QR01" &&
+            routeIndex === 0
+        ) {
+            statusElement.textContent =
+                "Starting point confirmed.";
+
+            announceFullRoute();
+            return;
+        }
+
+        const expectedId = activeRoute[routeIndex];
+
+        if (scannedId === expectedId) {
+
+            routeIndex++;
+
+            announceNext();
+
+        } else if (routeIndex >= activeRoute.length) {
+
+            statusElement.textContent =
+                "Route completed.";
+
+            speakMessage(
+                "You have successfully reached your destination."
+            );
+
+        } else {
+
+            const expected = checkpoints[expectedId];
+
+            statusElement.textContent =
+                "Please scan the next checkpoint: " +
+                expected.name;
+
+            speakMessage(
+                "You have reached " + checkpoint.name +
+                ". Your next checkpoint should be " +
+                expected.name
+            );
+        }
+
+    } else {
+
+        statusElement.textContent =
+            "You have reached " + checkpoint.name;
+
+        speakMessage(
+            "You have reached " +
+            checkpoint.name + ", " +
+            checkpoint.floor +
+            ". Please select your destination."
+        );
+    }
+}
+
+    const scanner = new Html5QrcodeScanner(
+        "reader",
+        {
+            fps: 10,
+            qrbox: 250
+        }
+    );
+
+    scanner.render(onScanSuccess);
+</script>
+</body>
+</html>
